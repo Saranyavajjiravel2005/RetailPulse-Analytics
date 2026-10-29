@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 antialiased font-sans min-h-screen selection:bg-indigo-500 selection:text-white transition-colors duration-300;
+  }
+}
+
+/* Redefine glass classes to map to professional enterprise containers */
+.glass {
+  @apply bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800/80 shadow-sm dark:shadow-xl transition-all duration-300;
+}
+
+.glass-card {
+  @apply bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800/80 shadow-sm dark:shadow-xl transition-all duration-300;
+}
+
+/* Scrollbar customization */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-100 dark:bg-slate-950;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-800 rounded-full border border-transparent;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-700;
+}
+
+/* Animations */
+@keyframes slideUpFade {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.animate-modal-enter {
+  animation: slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}

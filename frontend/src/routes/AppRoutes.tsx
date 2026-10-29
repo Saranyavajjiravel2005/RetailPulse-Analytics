@@ -1,0 +1,81 @@
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import AuthLayout from '../layouts/AuthLayout';
+import DashboardLayout from '../layouts/DashboardLayout';
+import Login from '../pages/auth/Login';
+import Register from '../pages/auth/Register';
+import ForgotPassword from '../pages/auth/ForgotPassword';
+import Unauthorized from '../pages/auth/Unauthorized';
+import ProtectedRoute from './ProtectedRoute';
+import RoleRoute from './RoleRoute';
+import Dashboard from '../pages/dashboard/Dashboard';
+import Profile from '../pages/profile/Profile';
+import Products from '../pages/products/Products';
+import Categories from '../pages/categories/Categories';
+import Sales from '../pages/sales/Sales';
+import SaleDetails from '../pages/sales/SaleDetails';
+import Inventory from '../pages/inventory/Inventory';
+import InventoryForecast from '../pages/inventory/InventoryForecast';
+import Forecast from '../pages/forecast/Forecast';
+import Analytics from '../pages/analytics/Analytics';
+import SalesAnalytics from '../pages/analytics/SalesAnalytics';
+import Customers from '../pages/customers/Customers';
+import CustomerDetails from '../pages/customers/CustomerDetails';
+import DataImport from '../pages/imports/DataImport';
+import AuditLogs from '../pages/audit-logs/AuditLogs';
+import NotificationsPage from '../pages/notifications/Notifications';
+import Reports from '../pages/reports/Reports';
+import ScheduledReports from '../pages/reports/ScheduledReports';
+import DataQuality from '../pages/data-quality/DataQuality';
+import DataQualityIssueDetail from '../pages/data-quality/DataQualityIssueDetail';
+
+export const AppRoutes: React.FC = () => {
+  return (
+    <Routes>
+      {/* Auth routes layout wrapper */}
+      <Route element={<AuthLayout />}>
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+      </Route>
+
+      {/* Permission errors */}
+      <Route path="/unauthorized" element={<Unauthorized />} />
+
+      {/* Protected views layout wrapper */}
+      <Route element={<ProtectedRoute />}>
+        <Route element={<DashboardLayout />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route element={<RoleRoute allowedRoles={['COMPANY_ADMIN', 'SUPER_ADMIN']} />}>
+            <Route path="/products" element={<Products />} />
+            <Route path="/categories" element={<Categories />} />
+            <Route path="/customers" element={<Customers />} />
+            <Route path="/customers/:id" element={<CustomerDetails />} />
+            <Route path="/data-import" element={<DataImport />} />
+            <Route path="/audit-logs" element={<AuditLogs />} />
+            <Route path="/data-quality" element={<DataQuality />} />
+            <Route path="/data-quality/issues/:id" element={<DataQualityIssueDetail />} />
+          </Route>
+          <Route element={<RoleRoute allowedRoles={['COMPANY_ADMIN', 'ANALYST', 'SUPER_ADMIN']} />}>
+            <Route path="/analytics/sales" element={<SalesAnalytics />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/forecast" element={<Forecast />} />
+            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/inventory/forecast" element={<InventoryForecast />} />
+            <Route path="/sales" element={<Sales />} />
+            <Route path="/sales/:id" element={<SaleDetails />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/reports/scheduled" element={<ScheduledReports />} />
+          </Route>
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+        </Route>
+      </Route>
+
+      {/* Redirect wildcards */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
+};
+export default AppRoutes;

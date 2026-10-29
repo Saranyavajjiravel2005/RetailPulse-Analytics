@@ -1,0 +1,23 @@
+from fastapi import APIRouter
+from app.routers import auth, profile, company, user, dashboard, category, product, sale, notifications, inventory, analytics, customer, forecast, import_, audit_log, report
+
+api_router = APIRouter(prefix="/api")
+api_router.include_router(auth.router)
+api_router.include_router(profile.router)
+api_router.include_router(company.router)
+api_router.include_router(user.router)
+api_router.include_router(dashboard.router)
+api_router.include_router(category.router)
+api_router.include_router(product.router)
+api_router.include_router(inventory.router)
+api_router.include_router(sale.router)
+api_router.include_router(notifications.router)
+api_router.include_router(analytics.router)
+api_router.include_router(customer.router)
+api_router.include_router(forecast.router)
+api_router.include_router(import_.router)
+api_router.include_router(audit_log.router)
+api_router.include_router(report.router)
+
+from app.routers import data_quality
+api_router.include_router(data_quality.router)

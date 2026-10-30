@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.user import UserResponse, UserCreate
 from app.utils.dependencies import get_current_active_user
+from app.utils.security import hash_password
 from app.services.audit import audit_service
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -55,7 +56,7 @@ async def create_user(
         company_id=payload.company_id,
         name=payload.name,
         email=payload.email,
-        password=payload.password,
+        password=hash_password(payload.password),
         role=payload.role,
         status=payload.status,
     )

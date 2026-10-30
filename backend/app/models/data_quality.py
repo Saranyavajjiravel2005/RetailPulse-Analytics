@@ -65,6 +65,8 @@ class DataQualityIssue(Base):
     company = relationship("Company", back_populates="data_quality_issues", lazy="raise_on_sql")
     resolved_by_user = relationship("User", back_populates="resolved_data_quality_issues", lazy="raise_on_sql")
     reconciliation_run = relationship("ReconciliationRun", back_populates="issues", lazy="raise_on_sql")
+    history = relationship("DataQualityIssueHistory", back_populates="issue", cascade="all, delete-orphan", lazy="raise_on_sql")
+    history = relationship("DataQualityIssueHistory", back_populates="issue", cascade="all, delete-orphan", lazy="raise_on_sql")
 
 
 class ReconciliationRun(Base):
@@ -88,3 +90,20 @@ class ReconciliationRun(Base):
     company = relationship("Company", back_populates="reconciliation_runs", lazy="raise_on_sql")
     triggered_by_user = relationship("User", back_populates="triggered_reconciliation_runs", lazy="raise_on_sql")
     issues = relationship("DataQualityIssue", back_populates="reconciliation_run", lazy="raise_on_sql")
+
+
+class DataQualityIssueHistory(Base):
+    __tablename__ = 'data_quality_issue_history'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    issue_id = Column(UUID(as_uuid=True), ForeignKey('data_quality_issues.id', ondelete='CASCADE'), nullable=False, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey('companies.id', ondelete='CASCADE'), nullable=False, index=True)
+    previous_status = Column(String, nullable=True)
+    new_status = Column(String, nullable=False)
+    changed_by = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    changed_by_name = Column(String, nullable=True)
+    resolution_note = Column(Text, nullable=True)
+    changed_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    issue = relationship('DataQualityIssue', back_populates='history', lazy='raise_on_sql')
+    changed_by_user = relationship('User', lazy='raise_on_sql')

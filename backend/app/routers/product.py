@@ -219,6 +219,11 @@ async def update_product(
         before_values=before,
         after_values={k: getattr(updated, k) for k in changed_fields if hasattr(updated, k)},
     )
+    try:
+        from app.services.data_quality_auto import data_quality_auto
+        await data_quality_auto.check_product_stock(db, updated, current_user.company_id)
+    except Exception:
+        pass
     cat = await category_crud.get(db, updated.category_id) if updated.category_id else None
     return serialize_product(updated, cat)
 

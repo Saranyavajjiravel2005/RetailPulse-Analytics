@@ -536,6 +536,12 @@ class ImportService:
         except Exception:
             logger.exception("Failed to create import notification")
 
+        try:
+            from app.services.data_quality_auto import data_quality_auto
+            await data_quality_auto.check_import(self.db, history, self.company_id)
+        except Exception:
+            logger.exception("Failed to run data quality auto check on import")
+
         return {
             "import_id": str(history.id),
             "import_type": history.import_type.value,

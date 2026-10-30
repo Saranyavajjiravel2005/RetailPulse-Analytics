@@ -67,7 +67,7 @@ class CRUDProduct:
         result = await db.execute(query)
         return list(result.scalars().all()), total
 
-    async def create(self, db: AsyncSession, company_id: UUID, name: str, sku: str, category_id: UUID | None, brand: str | None, description: str | None, unit_price: float, cost_price: float, stock_quantity: int, low_stock_threshold: int, lead_time_days: int, unit_of_measure: str, status: str) -> Product:
+    async def create(self, db: AsyncSession, company_id: UUID, name: str, sku: str, category_id: UUID | None, brand: str | None, description: str | None, unit_price: float, cost_price: float, stock_quantity: int, low_stock_threshold: int, lead_time_days: int = 7, unit_of_measure: str = "PCS", status: str = "ACTIVE") -> Product:
         product = Product(
             company_id=company_id,
             name=name,

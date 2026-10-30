@@ -72,7 +72,13 @@ export const DashboardLayout: React.FC = () => {
     setRefreshing(false);
   };
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => {
+    if (path === '/data-quality') {
+      return location.pathname.startsWith('/data-quality');
+    }
+    return location.pathname === path;
+  };
+
   const isAdmin = user?.role === 'COMPANY_ADMIN' || user?.role === 'SUPER_ADMIN';
   const isAnalyst = user?.role === 'ANALYST';
 
@@ -256,5 +262,3 @@ export const DashboardLayout: React.FC = () => {
   );
 };
 export default DashboardLayout;
-
-// Data Quality link will be added via manual edit if needed

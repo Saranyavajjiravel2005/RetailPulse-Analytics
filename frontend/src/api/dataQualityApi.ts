@@ -104,3 +104,27 @@ export const getReconciliationHistory = async (params?: { page?: number; limit?:
   const { data } = await axiosInstance.get('/data-quality/reconciliation/history', { params });
   return data;
 };
+
+
+export const getReconciliationStatus = async (executionId: string): Promise<ReconciliationRun> => {
+  const { data } = await axiosInstance.get(`/data-quality/reconciliation/status/${executionId}`);
+  return data;
+};
+
+
+export interface DataQualityIssueHistory {
+  id: string;
+  issue_id: string;
+  company_id: string;
+  previous_status: string | null;
+  new_status: string;
+  changed_by: string | null;
+  changed_by_name: string | null;
+  resolution_note: string | null;
+  changed_at: string;
+}
+
+export const getDataQualityIssueHistory = async (issueId: string): Promise<DataQualityIssueHistory[]> => {
+  const { data } = await axiosInstance.get(`/data-quality/issues/${issueId}/history`);
+  return data;
+};

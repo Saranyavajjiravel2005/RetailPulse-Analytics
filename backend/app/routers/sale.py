@@ -231,6 +231,12 @@ async def create_sale(
         description=f"Sale {sale.invoice_number} completed for {total:.2f}",
     )
 
+    try:
+        from app.services.data_quality_auto import data_quality_auto
+        await data_quality_auto.check_sale(db, sale, current_user.company_id)
+    except Exception:
+        pass
+
     return await get_sale(sale.id, current_user, db)
 
 
@@ -253,6 +259,11 @@ async def update_sale(
         update_data["items"] = items
 
     sale = await sale_crud.update(db, sale_id, current_user.company_id, current_user.id, update_data, request)
+    try:
+        from app.services.data_quality_auto import data_quality_auto
+        await data_quality_auto.check_sale(db, sale, current_user.company_id)
+    except Exception:
+        pass
     return await get_sale(sale.id, current_user, db)
 
 

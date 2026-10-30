@@ -35,10 +35,70 @@ async def init_db():
     except Exception as e:
         print(f"init_db error: {e}")
 
+async def seed_default_admin():
+    """Ensure a default admin user always exists so login never breaks."""
+    from app.database import SessionLocal
+    from app.models.user import User, UserRole, UserStatus
+    from app.models.company import Company
+    from app.utils.security import hash_password
+    from sqlalchemy import select
+
+    DEFAULT_EMAIL = "Abisaran@gmail.com"
+    DEFAULT_PASSWORD = "12345678"
+    DEFAULT_NAME = "Abisaran"
+
+    try:
+        async with SessionLocal() as session:
+            # Check if user already exists
+            result = await session.execute(select(User).where(User.email == DEFAULT_EMAIL))
+            existing_user = result.scalar_one_or_none()
+
+            if existing_user:
+                # User exists — reset password to make sure it always works
+                existing_user.password = hash_password(DEFAULT_PASSWORD)
+                existing_user.status = UserStatus.ACTIVE
+                session.add(existing_user)
+                await session.commit()
+                print(f"Default admin user '{DEFAULT_EMAIL}' password reset successfully.")
+                return
+
+            # Check if any company exists, if not create one
+            company_result = await session.execute(select(Company).limit(1))
+            company = company_result.scalar_one_or_none()
+
+            if not company:
+                company = Company(
+                    name="RetailPulse Demo",
+                    industry="Retail",
+                    email="admin@retailpulse.com",
+                    address="123 Main Street",
+                    phone="000-000-0000",
+                )
+                session.add(company)
+                await session.commit()
+                await session.refresh(company)
+                print("Created default company: RetailPulse Demo")
+
+            # Create admin user
+            user = User(
+                company_id=company.id,
+                name=DEFAULT_NAME,
+                email=DEFAULT_EMAIL,
+                password=hash_password(DEFAULT_PASSWORD),
+                role=UserRole.COMPANY_ADMIN,
+                status=UserStatus.ACTIVE,
+            )
+            session.add(user)
+            await session.commit()
+            print(f"Created default admin user: {DEFAULT_EMAIL} / {DEFAULT_PASSWORD}")
+    except Exception as e:
+        print(f"seed_default_admin error: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await asyncio.to_thread(run_migrations)
     await init_db()
+    await seed_default_admin()
     if not scheduler.running:
         scheduler.start()
     try:

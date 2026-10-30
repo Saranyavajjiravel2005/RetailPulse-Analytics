@@ -543,6 +543,12 @@ async def adjust_stock(
         user_id=current_user.id,
     )
 
+    try:
+        from app.services.data_quality_auto import data_quality_auto
+        await data_quality_auto.check_product_stock(db, product, current_user.company_id)
+    except Exception:
+        pass
+
     await db.commit()
 
     return InventoryItemResponse(

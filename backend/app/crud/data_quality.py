@@ -119,6 +119,28 @@ class CRUDDataQualityIssue:
         result = await db.execute(query)
         return list(result.scalars().all()), total
 
+    async def get_by_key(
+        self,
+        db: AsyncSession,
+        company_id: UUID,
+        issue_type,
+        affected_record_id: str | None,
+        affected_module: str,
+    ) -> DataQualityIssue | None:
+        if not affected_record_id:
+            return None
+        result = await db.execute(
+            select(DataQualityIssue).where(
+                and_(
+                    DataQualityIssue.company_id == company_id,
+                    DataQualityIssue.issue_type == issue_type,
+                    DataQualityIssue.affected_record_id == affected_record_id,
+                    DataQualityIssue.affected_module == affected_module,
+                )
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def update_status(
         self,
         db: AsyncSession,
@@ -137,6 +159,10 @@ class CRUDDataQualityIssue:
         else:
             issue.resolved_by = resolved_by
             issue.resolution_note = resolution_note
+            if new_status != DataQualityIssueStatus.RESOLVED:
+                issue.resolved_at = None
+                if new_status == DataQualityIssueStatus.OPEN or new_status == DataQualityIssueStatus.INVESTIGATING:
+                    pass
         if commit:
             await db.commit()
             await db.refresh(issue)

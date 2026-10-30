@@ -22,9 +22,11 @@ from app.schemas.data_quality import (
     ReconciliationRunListResponse,
     ReconciliationTriggerResponse,
     DataQualityDashboardResponse,
+    DataQualityIssueDetailResponse,
 )
 from app.utils.dependencies import get_current_active_user
 from app.crud.data_quality import data_quality_issue, reconciliation_run
+from app.crud.data_quality_history import data_quality_issue_history
 from app.services.data_quality_service import data_quality_service
 from app.services.audit import audit_service
 
@@ -41,11 +43,6 @@ async def get_dashboard(
     db: AsyncSession = Depends(get_db),
 ):
     # counts
-    total_issues_res = await db.execute(
-        select(func.count(DataQualityIssue.id)).where(DataQualityIssue.company_id == current_user.company_id)
-    )
-    total_issues = total_issues_res.scalar() or 0
-
     unresolved_res = await db.execute(
         select(func.count(DataQualityIssue.id)).where(
             and_(DataQualityIssue.company_id == current_user.company_id, DataQualityIssue.status.in_([DataQualityIssueStatus.OPEN, DataQualityIssueStatus.INVESTIGATING]))
@@ -80,7 +77,7 @@ async def get_dashboard(
     issues_by_module = {(m.value if hasattr(m, "value") else str(m)): c for m, c in mod_res.all() if m is not None}
 
     total_records_checked = last_run.records_checked if last_run else 0
-    valid_records = max(0, total_records_checked - total_issues)
+    valid_records = max(0, total_records_checked - (sum(issues_by_severity.values())))
     records_with_errors = sum(c for k, c in issues_by_severity.items() if k in ("HIGH", "CRITICAL"))
     records_with_warnings = sum(c for k, c in issues_by_severity.items() if k in ("MEDIUM", "LOW"))
 
@@ -111,19 +108,30 @@ async def list_issues(
     page: int = Query(1, ge=1),
     limit: int = Query(25, ge=1, le=100),
 ):
-    skip = (page - 1) * limit
+    page_num = page if isinstance(page, int) else getattr(page, "default", 1)
+    limit_num = limit if isinstance(limit, int) else getattr(limit, "default", 25)
+    skip = (page_num - 1) * limit_num
+
+    issue_type_val = issue_type.value if isinstance(issue_type, DataQualityIssueType) else (issue_type if isinstance(issue_type, str) else None)
+    severity_val = severity.value if isinstance(severity, DataQualitySeverity) else (severity if isinstance(severity, str) else None)
+    status_val = status.value if isinstance(status, DataQualityIssueStatus) else (status if isinstance(status, str) else None)
+    module_val = affected_module if isinstance(affected_module, str) else None
+    search_val = search if isinstance(search, str) else None
+    date_from_val = date_from if isinstance(date_from, datetime) else None
+    date_to_val = date_to if isinstance(date_to, datetime) else None
+
     issues, total = await data_quality_issue.get_multi(
         db,
         current_user.company_id,
         skip=skip,
-        limit=limit,
-        issue_type=issue_type.value if issue_type else None,
-        severity=severity.value if severity else None,
-        affected_module=affected_module,
-        status=status.value if status else None,
-        search=search,
-        date_from=date_from,
-        date_to=date_to,
+        limit=limit_num,
+        issue_type=issue_type_val,
+        severity=severity_val,
+        affected_module=module_val,
+        status=status_val,
+        search=search_val,
+        date_from=date_from_val,
+        date_to=date_to_val,
     )
     data = []
     for issue in issues:
@@ -151,10 +159,10 @@ async def list_issues(
                 updated_at=issue.updated_at,
             )
         )
-    return DataQualityIssueListResponse(data=data, total=total, page=page, limit=limit)
+    return DataQualityIssueListResponse(data=data, total=total, page=page_num, limit=limit_num)
 
 
-@router.get("/issues/{issue_id}", response_model=DataQualityIssueResponse)
+@router.get("/issues/{issue_id}", response_model=DataQualityIssueDetailResponse)
 async def get_issue(
     issue_id: UUID,
     current_user=Depends(get_current_active_user),
@@ -162,9 +170,12 @@ async def get_issue(
 ):
     issue = await data_quality_issue.get(db, issue_id)
     if not issue or issue.company_id != current_user.company_id:
-        raise HTTPException(status_code=404, detail="Issue not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Issue not found")
+
     resolved_by_name = issue.resolved_by_user.name if issue.resolved_by_user else None
-    return DataQualityIssueResponse(
+    history_records = await data_quality_issue_history.get_by_issue(db, issue.id)
+
+    return DataQualityIssueDetailResponse(
         id=issue.id,
         company_id=issue.company_id,
         issue_type=issue.issue_type,
@@ -184,6 +195,7 @@ async def get_issue(
         previous_status=issue.previous_status,
         created_at=issue.created_at,
         updated_at=issue.updated_at,
+        history=history_records,
     )
 
 
@@ -195,15 +207,42 @@ async def update_issue_status(
     current_user=Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not is_admin(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
     issue = await data_quality_issue.get(db, issue_id)
     if not issue or issue.company_id != current_user.company_id:
-        raise HTTPException(status_code=404, detail="Issue not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Issue not found")
 
     old_status = issue.status.value if hasattr(issue.status, "value") else str(issue.status)
-    issue = await data_quality_issue.update_status(
-        db, issue, payload.status, resolved_by=current_user.id, resolution_note=payload.resolution_note, commit=True
+    new_status = payload.status.value if hasattr(payload.status, "value") else str(payload.status)
+
+    now = datetime.utcnow()
+    issue.previous_status = old_status
+    issue.status = payload.status
+    if payload.resolution_note:
+        issue.resolution_note = payload.resolution_note
+
+    if new_status == "RESOLVED":
+        issue.resolved_by = current_user.id
+        issue.resolved_at = now
+    elif old_status == "RESOLVED" and new_status != "RESOLVED":
+        issue.resolved_by = None
+        issue.resolved_at = None
+
+    db.add(issue)
+
+    await data_quality_issue_history.create(
+        db,
+        issue_id=issue.id,
+        company_id=current_user.company_id,
+        previous_status=old_status,
+        new_status=new_status,
+        changed_by=current_user.id,
+        changed_by_name=current_user.name,
+        resolution_note=payload.resolution_note,
+        commit=False,
     )
-    new_status = issue.status.value if hasattr(issue.status, "value") else str(issue.status)
 
     await audit_service.log(
         db,
@@ -213,8 +252,9 @@ async def update_issue_status(
         request,
         resource_type="DataQualityIssue",
         resource_id=issue.id,
-        description=f"Updated issue status from {old_status} to {new_status}",
-        after_values={"status": new_status, "resolution_note": payload.resolution_note},
+        description=f"Issue {issue.id} status changed from {old_status} to {new_status}",
+        before_values={"status": old_status},
+        after_values={"status": new_status, "note": payload.resolution_note},
         status="SUCCESS",
     )
     await db.commit()
@@ -232,9 +272,11 @@ async def trigger_reconciliation(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
 
     try:
-        run = await data_quality_service.run_reconciliation(
-            db, current_user.company_id, user_id=current_user.id, user_name=current_user.name
+        from app.services.data_quality_background import data_quality_background
+        execution_id = await data_quality_background.start_reconciliation(
+            current_user.company_id, user_id=current_user.id, user_name=current_user.name
         )
+        run = await reconciliation_run.get_by_execution_id(db, current_user.company_id, execution_id)
         await audit_service.log(
             db,
             current_user.company_id,
@@ -242,16 +284,17 @@ async def trigger_reconciliation(
             "Data Quality Reconciliation Triggered",
             request,
             resource_type="ReconciliationRun",
-            resource_id=run.id,
-            description=f"Triggered reconciliation run {run.execution_id}",
+            resource_id=run.id if run else None,
+            description=f"Triggered reconciliation run {execution_id}",
             status="SUCCESS",
         )
         await db.commit()
+
         return ReconciliationTriggerResponse(
-            execution_id=run.execution_id,
-            status=run.status,
-            message="Reconciliation completed",
-            issues_detected=run.issues_detected,
+            execution_id=execution_id,
+            status=run.status if run else ReconciliationStatus.RUNNING,
+            message="Reconciliation started",
+            issues_detected=run.issues_detected if run else 0,
         )
     except Exception as e:
         await audit_service.log(
@@ -275,8 +318,11 @@ async def get_reconciliation_history(
     page: int = Query(1, ge=1),
     limit: int = Query(25, ge=1, le=100),
 ):
-    skip = (page - 1) * limit
-    runs, total = await reconciliation_run.get_multi(db, current_user.company_id, skip=skip, limit=limit)
+    page_num = page if isinstance(page, int) else getattr(page, "default", 1)
+    limit_num = limit if isinstance(limit, int) else getattr(limit, "default", 25)
+    skip = (page_num - 1) * limit_num
+
+    runs, total = await reconciliation_run.get_multi(db, current_user.company_id, skip=skip, limit=limit_num)
     data = []
     for run in runs:
         triggered_by_name = run.triggered_by_user.name if run.triggered_by_user else run.triggered_by_name
@@ -298,4 +344,45 @@ async def get_reconciliation_history(
                 summary=run.summary,
             )
         )
-    return ReconciliationRunListResponse(data=data, total=total, page=page, limit=limit)
+    return ReconciliationRunListResponse(data=data, total=total, page=page_num, limit=limit_num)
+
+
+@router.get("/reconciliation/status/{execution_id}", response_model=ReconciliationRunResponse)
+async def get_reconciliation_status(
+    execution_id: str,
+    current_user=Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    run = await reconciliation_run.get_by_execution_id(db, current_user.company_id, execution_id)
+    if not run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reconciliation run not found")
+    triggered_by_name = run.triggered_by_user.name if run.triggered_by_user else run.triggered_by_name
+    return ReconciliationRunResponse(
+        id=run.id,
+        company_id=run.company_id,
+        execution_id=run.execution_id,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        triggered_by=run.triggered_by,
+        triggered_by_name=triggered_by_name,
+        records_checked=run.records_checked,
+        issues_detected=run.issues_detected,
+        issues_resolved=run.issues_resolved,
+        failed_checks=run.failed_checks,
+        status=run.status,
+        error_message=run.error_message,
+        summary=run.summary,
+    )
+
+
+@router.get("/issues/{issue_id}/history")
+async def get_issue_history(
+    issue_id: UUID,
+    current_user=Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    issue = await data_quality_issue.get(db, issue_id)
+    if not issue or issue.company_id != current_user.company_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Issue not found")
+    history_records = await data_quality_issue_history.get_by_issue(db, issue.id)
+    return history_records

@@ -98,3 +98,21 @@ class DataQualityDashboardResponse(BaseModel):
     issues_by_status: Dict[str, int] = {}
     issues_by_severity: Dict[str, int] = {}
     issues_by_module: Dict[str, int] = {}
+
+
+class DataQualityIssueHistoryResponse(BaseModel):
+    id: UUID
+    issue_id: UUID
+    company_id: UUID
+    previous_status: Optional[str] = None
+    new_status: str
+    changed_by: Optional[UUID] = None
+    changed_by_name: Optional[str] = None
+    resolution_note: Optional[str] = None
+    changed_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class DataQualityIssueDetailResponse(DataQualityIssueResponse):
+    history: List[DataQualityIssueHistoryResponse] = []
+    related_records: Optional[Dict[str, Any]] = None

@@ -634,6 +634,11 @@ async def update_customer(
         after_values={k: getattr(updated, k) for k in changed_fields if hasattr(updated, k)},
     )
     await customer_crud.log_timeline(db, current_user.company_id, customer_id, current_user.id, "Profile Updated", f"Updated customer '{updated.first_name} {updated.last_name}'")
+    try:
+        from app.services.data_quality_auto import data_quality_auto
+        await data_quality_auto.check_customer(db, updated, current_user.company_id)
+    except Exception:
+        pass
     return serialize_customer(updated)
 
 

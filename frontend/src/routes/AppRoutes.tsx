@@ -27,7 +27,9 @@ import NotificationsPage from '../pages/notifications/Notifications';
 import Reports from '../pages/reports/Reports';
 import ScheduledReports from '../pages/reports/ScheduledReports';
 import DataQuality from '../pages/data-quality/DataQuality';
+import DataQualityIssues from '../pages/data-quality/DataQualityIssues';
 import DataQualityIssueDetail from '../pages/data-quality/DataQualityIssueDetail';
+import ReconciliationHistory from '../pages/data-quality/ReconciliationHistory';
 
 export const AppRoutes: React.FC = () => {
   return (
@@ -55,7 +57,9 @@ export const AppRoutes: React.FC = () => {
             <Route path="/data-import" element={<DataImport />} />
             <Route path="/audit-logs" element={<AuditLogs />} />
             <Route path="/data-quality" element={<DataQuality />} />
+            <Route path="/data-quality/issues" element={<DataQualityIssues />} />
             <Route path="/data-quality/issues/:id" element={<DataQualityIssueDetail />} />
+            <Route path="/data-quality/reconciliation" element={<ReconciliationHistory />} />
           </Route>
           <Route element={<RoleRoute allowedRoles={['COMPANY_ADMIN', 'ANALYST', 'SUPER_ADMIN']} />}>
             <Route path="/analytics/sales" element={<SalesAnalytics />} />

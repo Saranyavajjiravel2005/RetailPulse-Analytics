@@ -23,6 +23,7 @@ class NotificationService:
         NotificationType.OUT_OF_STOCK: [UserRole.COMPANY_ADMIN, UserRole.SUPER_ADMIN, UserRole.ANALYST],
         NotificationType.LOW_STOCK: [UserRole.COMPANY_ADMIN, UserRole.SUPER_ADMIN, UserRole.ANALYST],
         NotificationType.OVERSTOCK: [UserRole.COMPANY_ADMIN, UserRole.SUPER_ADMIN, UserRole.ANALYST],
+        NotificationType.IMPORT_STARTED: [UserRole.COMPANY_ADMIN, UserRole.SUPER_ADMIN],
         NotificationType.IMPORT_FAILED: [UserRole.COMPANY_ADMIN, UserRole.SUPER_ADMIN],
         NotificationType.IMPORT_COMPLETED: [UserRole.COMPANY_ADMIN, UserRole.SUPER_ADMIN],
         NotificationType.IMPORT_COMPLETED_WITH_ERRORS: [UserRole.COMPANY_ADMIN, UserRole.SUPER_ADMIN],

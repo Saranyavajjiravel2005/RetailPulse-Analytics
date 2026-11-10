@@ -16,9 +16,11 @@ class ImportHistoryResponse(BaseModel):
     successful_records: int
     failed_records: int
     duplicate_records: int
+    skipped_records: int = 0
     status: str
     created_at: datetime
     completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
 
     model_config = {"from_attributes": True}
 
@@ -28,6 +30,7 @@ class ImportErrorResponse(BaseModel):
     import_id: Optional[UUID] = None
     row_number: int
     field: Optional[str] = None
+    error_type: Optional[str] = "VALIDATION_ERROR"
     error_message: str
     raw_data: Optional[str] = None
 
@@ -45,6 +48,7 @@ class ImportPreviewResponse(BaseModel):
     invalid_records: int
     duplicate_records: int
     errors: list[ImportErrorResponse]
+    status: Optional[str] = "VALIDATED"
 
 
 class ImportResultResponse(BaseModel):
@@ -55,8 +59,10 @@ class ImportResultResponse(BaseModel):
     successful_records: int
     failed_records: int
     duplicate_records: int
+    skipped_records: int = 0
     status: str
     errors: list[ImportErrorResponse]
+    duration_seconds: Optional[float] = None
 
 
 class ImportProcessResponse(BaseModel):
@@ -67,5 +73,7 @@ class ImportProcessResponse(BaseModel):
     successful_records: int
     failed_records: int
     duplicate_records: int
+    skipped_records: int = 0
     status: str
     errors: list[dict[str, Any]]
+    duration_seconds: Optional[float] = None

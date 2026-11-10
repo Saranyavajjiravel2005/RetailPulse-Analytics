@@ -1,8 +1,18 @@
 import axiosInstance from './axios';
 
-export type ImportType = 'PRODUCTS' | 'CUSTOMERS' | 'SALES';
+export type ImportType = 'PRODUCTS' | 'INVENTORY' | 'CUSTOMERS' | 'SALES';
 
-export type ImportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'COMPLETED_WITH_ERRORS' | 'FAILED';
+export type ImportStatus =
+  | 'UPLOADED'
+  | 'PENDING'
+  | 'VALIDATING'
+  | 'PROCESSING'
+  | 'COMPLETED'
+  | 'COMPLETED_WITH_ERRORS'
+  | 'FAILED'
+  | 'CANCELLED';
+
+export type DuplicateAction = 'SKIP' | 'UPDATE' | 'REJECT';
 
 export interface ImportHistoryItem {
   id: string;
@@ -15,9 +25,11 @@ export interface ImportHistoryItem {
   successful_records: number;
   failed_records: number;
   duplicate_records: number;
+  skipped_records: number;
   status: string;
   created_at: string;
   completed_at: string | null;
+  duration_seconds?: number | null;
 }
 
 export interface ImportErrorItem {
@@ -25,6 +37,7 @@ export interface ImportErrorItem {
   import_id?: string;
   row_number: number;
   field: string | null;
+  error_type?: string;
   error_message: string;
   raw_data: string | null;
 }
@@ -40,6 +53,7 @@ export interface ImportPreviewResponse {
   invalid_records: number;
   duplicate_records: number;
   errors: ImportErrorItem[];
+  status?: string;
 }
 
 export interface ImportResultResponse {
@@ -50,8 +64,10 @@ export interface ImportResultResponse {
   successful_records: number;
   failed_records: number;
   duplicate_records: number;
+  skipped_records: number;
   status: string;
   errors: ImportErrorItem[];
+  duration_seconds?: number | null;
 }
 
 export interface ImportUploadResponse {
@@ -90,10 +106,16 @@ export const uploadImport = async (importType: ImportType, file: File): Promise<
   return data;
 };
 
-export const validateImport = async (importType: ImportType, file: File, importId?: string): Promise<ImportPreviewResponse> => {
+export const validateImport = async (
+  importType: ImportType,
+  file: File,
+  importId?: string,
+  duplicateAction: DuplicateAction = 'SKIP'
+): Promise<ImportPreviewResponse> => {
   const form = new FormData();
   form.append('import_type', importType);
   form.append('file', file);
+  form.append('duplicate_action', duplicateAction);
   if (importId) {
     form.append('import_id', importId);
   }
@@ -101,13 +123,55 @@ export const validateImport = async (importType: ImportType, file: File, importI
   return data;
 };
 
-export const processImport = async (importType: ImportType, file: File, importId?: string): Promise<ImportResultResponse> => {
+export const startImport = async (
+  importType: ImportType,
+  file: File,
+  importId?: string,
+  duplicateAction: DuplicateAction = 'SKIP'
+): Promise<ImportUploadResponse> => {
   const form = new FormData();
   form.append('import_type', importType);
   form.append('file', file);
+  form.append('duplicate_action', duplicateAction);
+  if (importId) {
+    form.append('import_id', importId);
+  }
+  const { data } = await axiosInstance.post('/import/start', form);
+  return data;
+};
+
+export const processImport = async (
+  importType: ImportType,
+  file: File,
+  importId?: string,
+  duplicateAction: DuplicateAction = 'SKIP'
+): Promise<ImportResultResponse> => {
+  const form = new FormData();
+  form.append('import_type', importType);
+  form.append('file', file);
+  form.append('duplicate_action', duplicateAction);
   if (importId) {
     form.append('import_id', importId);
   }
   const { data } = await axiosInstance.post('/import/process', form);
+  return data;
+};
+
+export const downloadTemplate = async (importType: ImportType): Promise<Blob> => {
+  const response = await axiosInstance.get(`/import/template/${importType}`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const downloadErrorReport = async (importId: string): Promise<Blob> => {
+  const response = await axiosInstance.get(`/import/${importId}/errors/download`, {
+    responseType: 'blob',
+  });
+  return response.data;
+};
+
+export const cancelImport = async (importId: string): Promise<ImportHistoryItem> => {
+  const { data } = await axiosInstance.post(`/import/${importId}/cancel`);
   return data;
 };

@@ -2,7 +2,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from uuid import UUID
 from typing import Optional, List
+from datetime import datetime
 from app.models.import_history import ImportHistory, ImportError, ImportStatus, ImportType
+from app.models.user import User
 
 
 class CRUDImportHistory:
@@ -13,7 +15,7 @@ class CRUDImportHistory:
             filename=filename,
             uploaded_by=uploaded_by,
             total_records=total_records,
-            status=ImportStatus.PENDING,
+            status=ImportStatus.UPLOADED,
         )
         db.add(history)
         if commit:
@@ -42,13 +44,14 @@ class CRUDImportHistory:
         result = await db.execute(query)
         return list(result.scalars().all()), total
 
-    async def update_status(self, db: AsyncSession, history: ImportHistory, status: ImportStatus, successful: int = 0, failed: int = 0, duplicates: int = 0, commit: bool = True) -> ImportHistory:
+    async def update_status(self, db: AsyncSession, history: ImportHistory, status: ImportStatus, successful: int = 0, failed: int = 0, duplicates: int = 0, skipped: int = 0, commit: bool = True) -> ImportHistory:
         history.status = status
         history.successful_records = successful
         history.failed_records = failed
         history.duplicate_records = duplicates
-        if status in (ImportStatus.COMPLETED, ImportStatus.COMPLETED_WITH_ERRORS, ImportStatus.FAILED):
-            history.completed_at = __import__('datetime').datetime.utcnow()
+        history.skipped_records = skipped
+        if status in (ImportStatus.COMPLETED, ImportStatus.COMPLETED_WITH_ERRORS, ImportStatus.FAILED, ImportStatus.CANCELLED):
+            history.completed_at = datetime.utcnow()
         db.add(history)
         if commit:
             await db.commit()
@@ -58,11 +61,12 @@ class CRUDImportHistory:
             await db.refresh(history)
         return history
 
-    async def add_error(self, db: AsyncSession, import_id: UUID, row_number: int, error_message: str, field: Optional[str] = None, raw_data: Optional[str] = None, commit: bool = True) -> ImportError:
+    async def add_error(self, db: AsyncSession, import_id: UUID, row_number: int, error_message: str, field: Optional[str] = None, raw_data: Optional[str] = None, error_type: Optional[str] = "VALIDATION_ERROR", commit: bool = True) -> ImportError:
         error = ImportError(
             import_id=import_id,
             row_number=row_number,
             field=field,
+            error_type=error_type,
             error_message=error_message,
             raw_data=raw_data,
         )

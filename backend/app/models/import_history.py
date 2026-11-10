@@ -8,15 +8,19 @@ from app.database import Base
 
 
 class ImportStatus(str, enum.Enum):
+    UPLOADED = "UPLOADED"
     PENDING = "PENDING"
+    VALIDATING = "VALIDATING"
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
     COMPLETED_WITH_ERRORS = "COMPLETED_WITH_ERRORS"
     FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
 
 
 class ImportType(str, enum.Enum):
     PRODUCTS = "PRODUCTS"
+    INVENTORY = "INVENTORY"
     CUSTOMERS = "CUSTOMERS"
     SALES = "SALES"
 
@@ -33,7 +37,8 @@ class ImportHistory(Base):
     successful_records = Column(Integer, nullable=False, default=0)
     failed_records = Column(Integer, nullable=False, default=0)
     duplicate_records = Column(Integer, nullable=False, default=0)
-    status = Column(SQLEnum(ImportStatus), nullable=False, default=ImportStatus.PENDING, index=True)
+    skipped_records = Column(Integer, nullable=False, default=0)
+    status = Column(SQLEnum(ImportStatus), nullable=False, default=ImportStatus.UPLOADED, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     completed_at = Column(DateTime, nullable=True)
 
@@ -49,6 +54,7 @@ class ImportError(Base):
     import_id = Column(UUID(as_uuid=True), ForeignKey("import_history.id", ondelete="CASCADE"), nullable=False, index=True)
     row_number = Column(Integer, nullable=False)
     field = Column(String, nullable=True)
+    error_type = Column(String, nullable=True, default="VALIDATION_ERROR")
     error_message = Column(Text, nullable=False)
     raw_data = Column(Text, nullable=True)
 

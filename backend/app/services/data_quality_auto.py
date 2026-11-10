@@ -204,8 +204,8 @@ class DataQualityAutoService:
     async def check_import(self, db: AsyncSession, import_history, company_id: UUID):
         """Targeted check triggered after an import job completes."""
         try:
-            import_type_str = getattr(import_history.import_type, "value", str(import_history.import_type))
-            if "PRODUCT" in import_type_str.upper():
+            import_type_str = getattr(import_history.import_type, "value", str(import_history.import_type)).upper()
+            if "PRODUCT" in import_type_str:
                 # Scan for duplicate SKUs
                 prods_res = await db.execute(select(Product).where(Product.company_id == company_id))
                 prods = prods_res.scalars().all()
@@ -227,6 +227,80 @@ class DataQualityAutoService:
                     elif sku:
                         sku_set.add(sku)
                 await db.commit()
+
+            elif "INVENTORY" in import_type_str:
+                # Check for negative inventory or stock movements inconsistency
+                prods_res = await db.execute(select(Product).where(Product.company_id == company_id))
+                prods = prods_res.scalars().all()
+                for p in prods:
+                    if (p.stock_quantity or 0) < 0:
+                        await self._upsert_open_issue(
+                            db,
+                            company_id=company_id,
+                            issue_type=DataQualityIssueType.INVENTORY_INCONSISTENT_WITH_MOVEMENTS,
+                            severity=DataQualitySeverity.CRITICAL,
+                            affected_module="Inventory",
+                            affected_record_id=str(p.id),
+                            affected_record_type="Product",
+                            description=f"Negative stock quantity ({p.stock_quantity}) detected for product '{p.name}' after inventory import",
+                            details={"product_id": str(p.id), "sku": p.sku, "stock_quantity": p.stock_quantity, "import_id": str(import_history.id)},
+                        )
+                    # Verify latest stock movement match
+                    latest_mv_res = await db.execute(
+                        select(StockMovement)
+                        .where(and_(StockMovement.company_id == company_id, StockMovement.product_id == p.id))
+                        .order_by(desc(StockMovement.created_at))
+                        .limit(1)
+                    )
+                    latest_mv = latest_mv_res.scalar_one_or_none()
+                    if latest_mv and latest_mv.updated_quantity != p.stock_quantity:
+                        await self._upsert_open_issue(
+                            db,
+                            company_id=company_id,
+                            issue_type=DataQualityIssueType.STOCK_MOVEMENT_INCONSISTENT,
+                            severity=DataQualitySeverity.HIGH,
+                            affected_module="Inventory",
+                            affected_record_id=str(p.id),
+                            affected_record_type="Product",
+                            description=f"Product '{p.name}' stock ({p.stock_quantity}) does not match latest stock movement updated quantity ({latest_mv.updated_quantity}) after inventory import",
+                            details={
+                                "product_id": str(p.id),
+                                "product_name": p.name,
+                                "current_inventory": p.stock_quantity,
+                                "expected_quantity": latest_mv.updated_quantity,
+                                "difference": p.stock_quantity - latest_mv.updated_quantity,
+                                "import_id": str(import_history.id),
+                            },
+                        )
+                await db.commit()
+
+            elif "CUSTOMER" in import_type_str:
+                # Scan for missing mandatory customer info
+                custs_res = await db.execute(select(Customer).where(Customer.company_id == company_id, Customer.is_deleted == False))
+                custs = custs_res.scalars().all()
+                for c in custs:
+                    if not (c.first_name or "").strip():
+                        await self._upsert_open_issue(
+                            db,
+                            company_id=company_id,
+                            issue_type=DataQualityIssueType.MISSING_MANDATORY_PRODUCT_CUSTOMER_INFO,
+                            severity=DataQualitySeverity.LOW,
+                            affected_module="Customers",
+                            affected_record_id=str(c.id),
+                            affected_record_type="Customer",
+                            description=f"Customer {c.id} missing first name after import",
+                            details={"customer_id": str(c.id), "import_id": str(import_history.id)},
+                        )
+                await db.commit()
+
+            elif "SALE" in import_type_str:
+                # Scan for sales exceeding stock
+                sales_res = await db.execute(
+                    select(Sale).where(Sale.company_id == company_id).order_by(desc(Sale.created_at)).limit(50)
+                )
+                sales = sales_res.scalars().all()
+                for s in sales:
+                    await self.check_sale(db, s, company_id)
         except Exception as e:
             logger.warning(f"Data quality auto check on import failed (non-blocking): {e}")
 

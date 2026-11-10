@@ -9,6 +9,7 @@ const TYPE_ICON: Record<string, React.ElementType> = {
   OUT_OF_STOCK: ErrorIcon,
   STOCKOUT_RISK: ErrorIcon,
   OVERSTOCK: WarningIcon,
+  IMPORT_STARTED: NotificationsIcon,
   IMPORT_FAILED: ErrorIcon,
   IMPORT_COMPLETED: CheckIcon,
   IMPORT_COMPLETED_WITH_ERRORS: WarningIcon,

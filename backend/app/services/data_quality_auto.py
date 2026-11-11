@@ -275,9 +275,11 @@ class DataQualityAutoService:
                 await db.commit()
 
             elif "CUSTOMER" in import_type_str:
-                # Scan for missing mandatory customer info
+                # Scan for missing mandatory customer info and duplicate contacts
                 custs_res = await db.execute(select(Customer).where(Customer.company_id == company_id, Customer.is_deleted == False))
                 custs = custs_res.scalars().all()
+                seen_emails = set()
+                seen_phones = set()
                 for c in custs:
                     if not (c.first_name or "").strip():
                         await self._upsert_open_issue(
@@ -291,6 +293,39 @@ class DataQualityAutoService:
                             description=f"Customer {c.id} missing first name after import",
                             details={"customer_id": str(c.id), "import_id": str(import_history.id)},
                         )
+                    # Check duplicates
+                    if c.email:
+                        clean_email = c.email.strip().lower()
+                        if clean_email in seen_emails:
+                            await self._upsert_open_issue(
+                                db,
+                                company_id=company_id,
+                                issue_type=DataQualityIssueType.CUSTOMER_DUPLICATE_OR_INVALID_CONTACT,
+                                severity=DataQualitySeverity.MEDIUM,
+                                affected_module="Customers",
+                                affected_record_id=str(c.id),
+                                affected_record_type="Customer",
+                                description=f"Duplicate customer email '{c.email}' detected after import",
+                                details={"customer_id": str(c.id), "email": c.email, "import_id": str(import_history.id)},
+                            )
+                        else:
+                            seen_emails.add(clean_email)
+                    if c.phone:
+                        clean_phone = "".join(filter(str.isdigit, c.phone))
+                        if len(clean_phone) >= 7 and clean_phone in seen_phones:
+                            await self._upsert_open_issue(
+                                db,
+                                company_id=company_id,
+                                issue_type=DataQualityIssueType.CUSTOMER_DUPLICATE_OR_INVALID_CONTACT,
+                                severity=DataQualitySeverity.MEDIUM,
+                                affected_module="Customers",
+                                affected_record_id=str(c.id),
+                                affected_record_type="Customer",
+                                description=f"Duplicate customer phone '{c.phone}' detected after import",
+                                details={"customer_id": str(c.id), "phone": c.phone, "import_id": str(import_history.id)},
+                            )
+                        elif len(clean_phone) >= 7:
+                            seen_phones.add(clean_phone)
                 await db.commit()
 
             elif "SALE" in import_type_str:

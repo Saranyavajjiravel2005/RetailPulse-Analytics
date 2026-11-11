@@ -217,3 +217,40 @@ def test_error_csv_generation():
     assert "Row Number,Field,Error Type,Error Message,Raw Data" in csv_str
     assert "Duplicate SKU 'S1'" in csv_str
     assert "Unit Price must be greater than zero" in csv_str
+
+
+def test_file_validation_rejects_binary_and_null_bytes():
+    from app.services.import_storage import validate_csv_content
+    from fastapi import HTTPException
+
+    # ZIP / Office header
+    with pytest.raises(HTTPException) as exc:
+        validate_csv_content(b"PK\x03\x04somezipdata", "bad.csv")
+    assert exc.value.status_code == 400
+    assert "binary file" in exc.value.detail
+
+    # Null bytes
+    with pytest.raises(HTTPException) as exc:
+        validate_csv_content(b"name,sku\x00,price\nwidget,w-1,10", "bad.csv")
+    assert exc.value.status_code == 400
+    assert "null bytes" in exc.value.detail
+
+    # Valid CSV content
+    text = validate_csv_content(b"name,sku,unit_price\nitem1,SKU-1,19.99\n", "good.csv")
+    assert "item1" in text
+
+
+def test_customer_duplicate_modes():
+    service = ImportService(AsyncMock(), uuid4(), uuid4())
+    existing_emails = {"alice@example.com"}
+    existing_phones = {"15550144"}
+
+    row = {"name": "Alice J", "email": "alice@example.com", "phone": "+1-555-0144"}
+
+    # In SKIP mode, DuplicateRecordError is raised for duplicate handling
+    with pytest.raises(DuplicateRecordError):
+        service.validate_row(ImportType.CUSTOMERS, 2, row, set(), existing_emails, existing_phones, set(), {}, {}, {}, duplicate_action="SKIP")
+
+    # In UPDATE mode, duplicate is accepted
+    service.validate_row(ImportType.CUSTOMERS, 2, row, set(), existing_emails, existing_phones, set(), {}, {}, {}, duplicate_action="UPDATE")
+

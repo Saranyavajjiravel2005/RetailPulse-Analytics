@@ -15,6 +15,9 @@ from app.services.import_ import ImportService, ImportValidationError
 from app.utils.dependencies import get_current_active_user
 from app.services.audit import audit_service
 from app.models.user import User
+from app.services.import_storage import save_uploaded_import_file, validate_csv_content, get_import_file_path
+from app.crud.import_history import import_history as import_history_crud
+from datetime import datetime
 
 logger = logging.getLogger("retailpulse")
 
@@ -75,14 +78,12 @@ async def upload_file(
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only CSV files (.csv) are supported for data import.")
 
-    max_size = 50 * 1024 * 1024  # 50MB
     content = await file.read()
-    if len(content) > max_size:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File size exceeds the 50MB limit.")
+    validate_csv_content(content, file.filename)
 
     service = ImportService(db, current_user.company_id, current_user.id)
     try:
-        columns, rows = service.parse_csv(content)
+        columns, rows = service.parse_csv(file_content=content)
         if not rows and not columns:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded CSV file is empty.")
         service.validate_columns(itype, columns)
@@ -91,6 +92,16 @@ async def upload_file(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     history = await service.create_import_history(itype, file.filename, len(rows))
+
+    # Persist file to disk
+    try:
+        file_path = get_import_file_path(current_user.company_id, history.id)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "wb") as f:
+            f.write(content)
+    except Exception as e:
+        logger.exception(f"Failed to persist import file: {e}")
+
     await audit_service.log(
         db,
         current_user.company_id,
@@ -130,12 +141,22 @@ async def validate_import(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only CSV files (.csv) are supported.")
 
     content = await file.read()
+    validate_csv_content(content, file.filename)
+
     service = ImportService(db, current_user.company_id, current_user.id)
     parsed_id = UUID(import_id) if import_id else None
 
+    # Persist file if parsed_id exists
+    file_path = None
+    if parsed_id:
+        file_path = get_import_file_path(current_user.company_id, parsed_id)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "wb") as f:
+            f.write(content)
+
     try:
         result = await service.validate_import(
-            itype, content, file.filename, parsed_id, duplicate_action=duplicate_action.upper()
+            itype, file_content=content, filename=file.filename, import_id=parsed_id, duplicate_action=duplicate_action.upper(), file_path=str(file_path) if file_path else None
         )
     except Exception as e:
         logger.exception("Validation failed unexpectedly")
@@ -144,15 +165,16 @@ async def validate_import(
     return ImportPreviewResponse(**result)
 
 
-# Background task runner for processing bulk imports
+# Background task runner for processing bulk imports reliably
 async def run_import_job_background(
     company_id: UUID,
     user_id: UUID,
     import_id: UUID,
     import_type: ImportType,
-    file_content: bytes,
+    file_content: Optional[bytes],
     filename: str,
     duplicate_action: str,
+    file_path: Optional[str] = None,
 ):
     async with async_session_factory() as session:
         service = ImportService(session, company_id, user_id)
@@ -163,14 +185,50 @@ async def run_import_job_background(
                 filename=filename,
                 import_id=import_id,
                 duplicate_action=duplicate_action,
+                file_path=file_path,
             )
+            # Log audit event for completion
+            history = await service.get_import_history(import_id)
+            if history:
+                status_action = "Import completed" if history.status in (ImportStatus.COMPLETED, ImportStatus.COMPLETED_WITH_ERRORS) else "Import failed"
+                await audit_service.log(
+                    session,
+                    company_id,
+                    user_id,
+                    status_action,
+                    None,
+                    resource_type="Import",
+                    resource_id=history.id,
+                    description=f"Import '{history.filename}' completed with status {history.status.value}. Success: {history.successful_records}, Failed: {history.failed_records}",
+                )
+                await session.commit()
         except Exception as e:
             logger.exception(f"Background import job {import_id} failed: {e}")
             history = await service.get_import_history(import_id)
             if history and history.status != ImportStatus.CANCELLED:
-                await session.refresh(history)
                 history.status = ImportStatus.FAILED
+                history.completed_at = datetime.utcnow()
                 session.add(history)
+                await import_history_crud.add_error(
+                    session,
+                    history.id,
+                    1,
+                    f"Background import processing failed: {str(e)}",
+                    field="System",
+                    raw_data=None,
+                    error_type="SYSTEM_ERROR",
+                    commit=False,
+                )
+                await audit_service.log(
+                    session,
+                    company_id,
+                    user_id,
+                    "Import failed",
+                    None,
+                    resource_type="Import",
+                    resource_id=history.id,
+                    description=f"Background import job for '{history.filename}' failed: {str(e)}",
+                )
                 await session.commit()
 
 
@@ -196,15 +254,16 @@ async def start_import(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only CSV files (.csv) are supported.")
 
     content = await file.read()
-    service = ImportService(db, current_user.company_id, current_user.id)
+    validate_csv_content(content, file.filename)
 
+    service = ImportService(db, current_user.company_id, current_user.id)
     parsed_id = UUID(import_id) if import_id else None
     history = None
     if parsed_id:
         history = await service.get_import_history(parsed_id)
 
     if not history:
-        columns, rows = service.parse_csv(content)
+        columns, rows = service.parse_csv(file_content=content)
         service.validate_columns(itype, columns)
         history = await service.create_import_history(itype, file.filename, len(rows))
     else:
@@ -212,6 +271,12 @@ async def start_import(
         db.add(history)
         await db.commit()
         await db.refresh(history)
+
+    # Persist file persistently on disk
+    file_path = get_import_file_path(current_user.company_id, history.id)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(file_path, "wb") as f:
+        f.write(content)
 
     await audit_service.log(
         db,
@@ -224,16 +289,17 @@ async def start_import(
         description=f"Import {history.id} started for {itype.value} with file '{file.filename}'",
     )
 
-    # Dispatch to background tasks
+    # Dispatch to reliable background tasks
     background_tasks.add_task(
         run_import_job_background,
         current_user.company_id,
         current_user.id,
         history.id,
         itype,
-        content,
+        None,
         file.filename,
         duplicate_action.upper(),
+        file_path=str(file_path),
     )
 
     return ImportUploadResponse(
@@ -266,10 +332,19 @@ async def process_import(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only CSV files (.csv) are allowed.")
 
     content = await file.read()
+    validate_csv_content(content, file.filename)
+
     service = ImportService(db, current_user.company_id, current_user.id)
     parsed_id = UUID(import_id) if import_id else None
 
-    # Audit import started
+    # Persist file
+    file_path = None
+    if parsed_id:
+        file_path = get_import_file_path(current_user.company_id, parsed_id)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "wb") as f:
+            f.write(content)
+
     if parsed_id:
         existing_history = await service.get_import_history(parsed_id)
         if existing_history:
@@ -282,7 +357,7 @@ async def process_import(
 
     try:
         result = await service.process_import(
-            itype, content, file.filename, parsed_id, duplicate_action=duplicate_action.upper()
+            itype, file_content=content, filename=file.filename, import_id=parsed_id, duplicate_action=duplicate_action.upper(), file_path=str(file_path) if file_path else None
         )
     except ValueError as e:
         logger.warning(f"Validation error during process: {e}")

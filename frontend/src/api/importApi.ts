@@ -68,6 +68,11 @@ export interface ImportResultResponse {
   status: string;
   errors: ImportErrorItem[];
   duration_seconds?: number | null;
+  reconciliation?: {
+    status?: string;
+    issues_detected?: number;
+    message?: string;
+  } | null;
 }
 
 export interface ImportUploadResponse {

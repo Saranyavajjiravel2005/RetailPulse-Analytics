@@ -63,6 +63,7 @@ class ImportResultResponse(BaseModel):
     status: str
     errors: list[ImportErrorResponse]
     duration_seconds: Optional[float] = None
+    reconciliation: Optional[dict[str, Any]] = None
 
 
 class ImportProcessResponse(BaseModel):

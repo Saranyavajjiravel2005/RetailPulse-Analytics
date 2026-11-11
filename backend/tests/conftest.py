@@ -30,6 +30,7 @@ from app.models.notification import Notification, NotificationType
 from app.models.forecast import DemandForecast, ForecastHistory, ForecastPeriodType
 from app.models.report import ScheduledReport, ReportHistory, ReportType, ReportFrequency, ReportFormat, ReportExecutionStatus
 from app.models.data_quality import DataQualityIssue, ReconciliationRun, DataQualityIssueHistory
+from app.models.import_history import ImportHistory, ImportError
 
 engine = create_async_engine(
     "sqlite+aiosqlite:///:memory:",
@@ -41,13 +42,6 @@ engine = create_async_engine(
 TestingSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
-
-
-@pytest_asyncio.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture(scope="function")

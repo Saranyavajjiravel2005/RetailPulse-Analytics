@@ -23,6 +23,10 @@ class NotificationType(str, enum.Enum):
     CUSTOMER_INACTIVE = "CUSTOMER_INACTIVE"
     FIRST_PURCHASE = "FIRST_PURCHASE"
     SYSTEM = "SYSTEM"
+    WORKFLOW_PENDING = "WORKFLOW_PENDING"
+    WORKFLOW_APPROVED = "WORKFLOW_APPROVED"
+    WORKFLOW_REJECTED = "WORKFLOW_REJECTED"
+    WORKFLOW_CANCELLED = "WORKFLOW_CANCELLED"
 
 
 class NotificationPriority(str, enum.Enum):
@@ -38,6 +42,7 @@ class NotificationResourceType(str, enum.Enum):
     SALE = "SALE"
     SYSTEM = "SYSTEM"
     INVENTORY = "INVENTORY"
+    WORKFLOW = "WORKFLOW"
 
 
 class Notification(Base):

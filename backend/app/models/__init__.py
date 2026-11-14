@@ -63,3 +63,6 @@ __all__ = [
 
 from app.models.data_quality import DataQualityIssue, ReconciliationRun, DataQualityIssueType, DataQualitySeverity, DataQualityIssueStatus, ReconciliationStatus
 __all__.extend(["DataQualityIssue", "ReconciliationRun", "DataQualityIssueType", "DataQualitySeverity", "DataQualityIssueStatus", "ReconciliationStatus"])
+
+from app.models.workflow import WorkflowRequest, WorkflowHistory, WorkflowConfiguration, WorkflowRequestType, WorkflowStatus, WorkflowPriority
+__all__.extend(["WorkflowRequest", "WorkflowHistory", "WorkflowConfiguration", "WorkflowRequestType", "WorkflowStatus", "WorkflowPriority"])
